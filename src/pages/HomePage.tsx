@@ -2,7 +2,7 @@ import { useState } from 'react';
 import CalendarStrip from '../components/calendar/CalendarStrip';
 import DayView from '../components/calendar/DayView';
 import { useSports } from '../hooks/useSports';
-import { MOCK_EVENTS } from '../data/mockEvents';
+import { useEvents } from '../hooks/useEvents';
 import { ALL_SPORTS } from '../data/sports';
 import { NavLink } from 'react-router-dom';
 
@@ -19,11 +19,7 @@ export default function HomePage() {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState(today);
   const { followed } = useSports();
-
-  const eventsForDay = MOCK_EVENTS.filter(e => e.date === selectedDate);
-  const highlightedCount = eventsForDay.filter(
-    e => followed.size === 0 || followed.has(e.sportId)
-  ).length;
+  const { events, loading, error } = useEvents(selectedDate, followed);
 
   return (
     <div className="flex flex-col gap-6">
@@ -34,7 +30,7 @@ export default function HomePage() {
           <p className="text-sm text-gray-500 mt-0.5">
             {followed.size > 0
               ? `Showing ${followed.size} sport${followed.size > 1 ? 's' : ''} you follow`
-              : 'All sports · pick your favourites in My Sports'}
+              : 'Top sports today · pick your favourites in My Sports'}
           </p>
         </div>
         {followed.size === 0 && (
@@ -67,21 +63,30 @@ export default function HomePage() {
       {/* Date heading + event count */}
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-semibold text-gray-800">{formatDate(selectedDate)}</h2>
-        {eventsForDay.length > 0 && (
+        {!loading && events.length > 0 && (
           <span className="text-sm text-gray-500">
-            {highlightedCount} event{highlightedCount !== 1 ? 's' : ''}
-            {followed.size > 0 && eventsForDay.length > highlightedCount &&
-              ` · ${eventsForDay.length - highlightedCount} other`
-            }
+            {events.length} event{events.length !== 1 ? 's' : ''}
           </span>
         )}
       </div>
 
-      {/* Events list */}
-      <DayView
-        events={eventsForDay}
-        followedSports={followed}
-      />
+      {/* States */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-sm">Loading events…</p>
+        </div>
+      )}
+
+      {error && !loading && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          Could not load events: {error}
+        </div>
+      )}
+
+      {!loading && !error && (
+        <DayView events={events} followedSports={followed} />
+      )}
     </div>
   );
 }
