@@ -19,12 +19,7 @@ export default function HomePage() {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState(today);
   const { followed } = useSports();
-  const { allEvents, loading, error } = useEvents(followed);
-
-  // Filter all fetched events down to the selected date (no extra API call)
-  const eventsForDay = allEvents
-    .filter(e => e.date === selectedDate)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const { events: eventsForDay, loading, error } = useEvents(selectedDate, followed);
 
   return (
     <div className="flex flex-col gap-6">

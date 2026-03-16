@@ -1,19 +1,18 @@
 import { useState, useEffect } from 'react';
 import type { SportEvent } from '../types';
-import { fetchEventsForSports } from '../api/thesportsdb';
+import { fetchEventsForDate } from '../api/espn';
 import { ALL_SPORTS } from '../data/sports';
 
-// Shown when nothing is followed
-const DEFAULT_SPORTS = ['football', 'formula1', 'tennis', 'basketball', 'cycling', 'rugby'];
+const DEFAULT_SPORTS = ['football', 'formula1', 'tennis', 'basketball', 'ice-hockey', 'baseball'];
 
 interface UseEventsResult {
-  allEvents: SportEvent[];
+  events: SportEvent[];
   loading: boolean;
   error: string | null;
 }
 
-export function useEvents(followedSports: Set<string>): UseEventsResult {
-  const [allEvents, setAllEvents] = useState<SportEvent[]>([]);
+export function useEvents(date: string, followedSports: Set<string>): UseEventsResult {
+  const [events, setEvents] = useState<SportEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,10 +26,10 @@ export function useEvents(followedSports: Set<string>): UseEventsResult {
     setLoading(true);
     setError(null);
 
-    fetchEventsForSports(sportIds)
+    fetchEventsForDate(date, sportIds)
       .then(data => {
         if (!cancelled) {
-          setAllEvents(data);
+          setEvents(data.sort((a, b) => a.startTime.localeCompare(b.startTime)));
           setLoading(false);
         }
       })
@@ -42,7 +41,7 @@ export function useEvents(followedSports: Set<string>): UseEventsResult {
       });
 
     return () => { cancelled = true; };
-  }, [followedSports]);
+  }, [date, followedSports]);
 
-  return { allEvents, loading, error };
+  return { events, loading, error };
 }
