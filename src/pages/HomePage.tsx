@@ -19,7 +19,12 @@ export default function HomePage() {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState(today);
   const { followed } = useSports();
-  const { events, loading, error } = useEvents(selectedDate, followed);
+  const { allEvents, loading, error } = useEvents(followed);
+
+  // Filter all fetched events down to the selected date (no extra API call)
+  const eventsForDay = allEvents
+    .filter(e => e.date === selectedDate)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   return (
     <div className="flex flex-col gap-6">
@@ -30,7 +35,7 @@ export default function HomePage() {
           <p className="text-sm text-gray-500 mt-0.5">
             {followed.size > 0
               ? `Showing ${followed.size} sport${followed.size > 1 ? 's' : ''} you follow`
-              : 'Top sports today · pick your favourites in My Sports'}
+              : 'Top sports · pick your favourites in My Sports'}
           </p>
         </div>
         {followed.size === 0 && (
@@ -63,29 +68,31 @@ export default function HomePage() {
       {/* Date heading + event count */}
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-semibold text-gray-800">{formatDate(selectedDate)}</h2>
-        {!loading && events.length > 0 && (
+        {!loading && eventsForDay.length > 0 && (
           <span className="text-sm text-gray-500">
-            {events.length} event{events.length !== 1 ? 's' : ''}
+            {eventsForDay.length} event{eventsForDay.length !== 1 ? 's' : ''}
           </span>
         )}
       </div>
 
-      {/* States */}
+      {/* Loading */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-16 text-gray-400">
           <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-3" />
-          <p className="text-sm">Loading events…</p>
+          <p className="text-sm">Loading schedule…</p>
         </div>
       )}
 
+      {/* Error */}
       {error && !loading && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           Could not load events: {error}
         </div>
       )}
 
+      {/* Events */}
       {!loading && !error && (
-        <DayView events={events} followedSports={followed} />
+        <DayView events={eventsForDay} followedSports={followed} />
       )}
     </div>
   );

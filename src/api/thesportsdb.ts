@@ -2,35 +2,35 @@ import type { SportEvent, Broadcaster, BroadcasterType } from '../types';
 
 const API_BASE = 'https://www.thesportsdb.com/api/v1/json/3';
 
-// Map our sport IDs to TheSportsDB sport name query param
-export const SPORT_NAME_MAP: Record<string, string> = {
-  'football':          'Soccer',
-  'cricket':           'Cricket',
-  'basketball':        'Basketball',
-  'american-football': 'American Football',
-  'tennis':            'Tennis',
-  'volleyball':        'Volleyball',
-  'table-tennis':      'Table Tennis',
-  'ice-hockey':        'Ice Hockey',
-  'rugby':             'Rugby',
-  'formula1':          'Motorsport',
-  'baseball':          'Baseball',
-  'golf':              'Golf',
-  'boxing':            'Boxing',
-  'mma':               'Fighting',
-  'cycling':           'Cycling',
+// TheSportsDB league IDs for each sport (verified via API)
+export const LEAGUES_BY_SPORT: Record<string, number[]> = {
+  'football':          [4328, 4335, 4480, 4331, 4332, 4334, 4481],
+  'cricket':           [4461, 4475],
+  'basketball':        [4387],
+  'american-football': [4391],
+  'tennis':            [4464, 4517],
+  'volleyball':        [5848, 5849],
+  'table-tennis':      [],
+  'ice-hockey':        [4380],
+  'rugby':             [4416],
+  'formula1':          [4370],
+  'baseball':          [4424],
+  'golf':              [],
+  'boxing':            [],
+  'mma':               [],
+  'cycling':           [4465],
 };
 
-// Rough broadcaster type classifier
+// Broadcaster type classifier
 const STREAMING_KEYWORDS = [
-  'dazn', 'amazon', 'prime', 'discovery+', 'peacock', 'paramount',
-  'espn+', 'f1 tv', 'nba league pass', 'mlb.tv', 'nhl.tv', 'draftking',
-  'jiostar', 'hotstar', 'gcn+', 'fubo', 'sky go', 'now tv', 'itvx',
-  'bbc iplayer', 'channel 4', 'all 4',
+  'dazn', 'amazon', 'prime video', 'discovery+', 'peacock', 'paramount+',
+  'espn+', 'f1 tv', 'nba league pass', 'mlb.tv', 'nhl.tv', 'gcn+', 'fubo',
+  'sky go', 'now tv', 'itvx', 'bbc iplayer', 'all 4', 'hotstar', 'jiostar',
 ];
 const FREE_TO_AIR_KEYWORDS = [
-  'bbc', 'itv', 'channel 4', 'channel 5', 'abc', 'cbs', 'nbc',
-  'rai', 'zdf', 'ard', 'rtl', 'tf1', 'france 2', 'france 3', 'sbs',
+  'bbc one', 'bbc two', 'bbc sport', 'itv', 'channel 4', 'channel 5',
+  'abc', 'cbs', 'nbc', 'fox', 'rai', 'zdf', 'ard', 'rtl', 'tf1',
+  'france 2', 'france 3', 'sbs',
 ];
 
 function classifyBroadcaster(name: string): BroadcasterType {
@@ -51,8 +51,7 @@ function parseBroadcasters(raw: string | null): Broadcaster[] {
 
 function parseTime(raw: string | null): string {
   if (!raw) return '';
-  // TheSportsDB returns "HH:MM:SS+00:00" or "HH:MM:SS"
-  return raw.slice(0, 5);
+  return raw.slice(0, 5); // "HH:MM:SS+00:00" → "HH:MM"
 }
 
 interface RawEvent {
@@ -60,12 +59,13 @@ interface RawEvent {
   strEvent: string;
   strLeague: string | null;
   strSport: string;
-  dateEvent: string;
+  dateEvent: string | null;
   strTime: string | null;
   strTVStation: string | null;
 }
 
-function mapEvent(raw: RawEvent, sportId: string): SportEvent {
+function mapEvent(raw: RawEvent, sportId: string): SportEvent | null {
+  if (!raw.dateEvent) return null;
   return {
     id: raw.idEvent,
     sportId,
@@ -77,37 +77,42 @@ function mapEvent(raw: RawEvent, sportId: string): SportEvent {
   };
 }
 
-// Simple in-memory cache so switching dates doesn't re-fetch
-const cache = new Map<string, SportEvent[]>();
+// Cache by leagueId → avoids re-fetching when switching dates
+const cache = new Map<number, SportEvent[]>();
 
-export async function fetchEventsByDateAndSport(
-  date: string,
-  sportId: string,
-): Promise<SportEvent[]> {
-  const key = `${date}|${sportId}`;
-  if (cache.has(key)) return cache.get(key)!;
+async function fetchLeagueEvents(leagueId: number, sportId: string): Promise<SportEvent[]> {
+  if (cache.has(leagueId)) return cache.get(leagueId)!;
 
-  const sportName = SPORT_NAME_MAP[sportId];
-  if (!sportName) return [];
+  const [nextRes, pastRes] = await Promise.allSettled([
+    fetch(`${API_BASE}/eventsnextleague.php?id=${leagueId}`),
+    fetch(`${API_BASE}/eventspastleague.php?id=${leagueId}`),
+  ]);
 
-  const url = `${API_BASE}/eventsday.php?d=${date}&s=${encodeURIComponent(sportName)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`TheSportsDB error: ${res.status}`);
+  const events: SportEvent[] = [];
 
-  const json = await res.json();
-  const events: SportEvent[] = (json.events ?? []).map((e: RawEvent) => mapEvent(e, sportId));
+  for (const res of [nextRes, pastRes]) {
+    if (res.status !== 'fulfilled' || !res.value.ok) continue;
+    const json = await res.value.json();
+    for (const raw of json.events ?? []) {
+      const mapped = mapEvent(raw as RawEvent, sportId);
+      if (mapped) events.push(mapped);
+    }
+  }
 
-  cache.set(key, events);
+  cache.set(leagueId, events);
   return events;
 }
 
-export async function fetchEventsForDate(
-  date: string,
-  sportIds: string[],
-): Promise<SportEvent[]> {
-  const results = await Promise.allSettled(
-    sportIds.map(id => fetchEventsByDateAndSport(date, id)),
-  );
+export async function fetchEventsForSports(sportIds: string[]): Promise<SportEvent[]> {
+  const tasks: Promise<SportEvent[]>[] = [];
 
+  for (const sportId of sportIds) {
+    const leagueIds = LEAGUES_BY_SPORT[sportId] ?? [];
+    for (const leagueId of leagueIds) {
+      tasks.push(fetchLeagueEvents(leagueId, sportId));
+    }
+  }
+
+  const results = await Promise.allSettled(tasks);
   return results.flatMap(r => (r.status === 'fulfilled' ? r.value : []));
 }

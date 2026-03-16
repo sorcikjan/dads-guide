@@ -1,19 +1,19 @@
 import { useState, useEffect } from 'react';
 import type { SportEvent } from '../types';
-import { fetchEventsForDate } from '../api/thesportsdb';
+import { fetchEventsForSports } from '../api/thesportsdb';
 import { ALL_SPORTS } from '../data/sports';
 
-// When nothing is followed, show these sports by default
+// Shown when nothing is followed
 const DEFAULT_SPORTS = ['football', 'formula1', 'tennis', 'basketball', 'cycling', 'rugby'];
 
 interface UseEventsResult {
-  events: SportEvent[];
+  allEvents: SportEvent[];
   loading: boolean;
   error: string | null;
 }
 
-export function useEvents(date: string, followedSports: Set<string>): UseEventsResult {
-  const [events, setEvents] = useState<SportEvent[]>([]);
+export function useEvents(followedSports: Set<string>): UseEventsResult {
+  const [allEvents, setAllEvents] = useState<SportEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,10 +27,10 @@ export function useEvents(date: string, followedSports: Set<string>): UseEventsR
     setLoading(true);
     setError(null);
 
-    fetchEventsForDate(date, sportIds)
+    fetchEventsForSports(sportIds)
       .then(data => {
         if (!cancelled) {
-          setEvents(data);
+          setAllEvents(data);
           setLoading(false);
         }
       })
@@ -42,7 +42,7 @@ export function useEvents(date: string, followedSports: Set<string>): UseEventsR
       });
 
     return () => { cancelled = true; };
-  }, [date, followedSports]);
+  }, [followedSports]);
 
-  return { events, loading, error };
+  return { allEvents, loading, error };
 }
